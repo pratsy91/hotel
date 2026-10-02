@@ -1,0 +1,243 @@
+{
+  "info": {
+    "name": "Hotel Offer Orchestrator",
+    "description": "Mock suppliers, Temporal aggregation, and Redis price-range queries.\n\nEvery /api/hotels request runs the workflow and returns a JSON array. A price range is applied inside Redis after that save.",
+    "schema": "https://schema.getpostman.com/json/collection/v2.1.0/collection.json"
+  },
+  "variable": [
+    {
+      "key": "baseUrl",
+      "value": "http://localhost:3000"
+    }
+  ],
+  "item": [
+    {
+      "name": "Supplier A Delhi",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/supplierA/hotels?city=delhi"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const hotels = pm.response.json();",
+              "pm.test('returns the Delhi catalog', function () {",
+              "  pm.expect(hotels).to.be.an('array').with.lengthOf(3);",
+              "  pm.expect(hotels[0]).to.have.property('hotelId');",
+              "  pm.expect(hotels.map((hotel) => hotel.name)).to.include('Holtin');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Supplier B Delhi",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/supplierB/hotels?city=delhi"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const hotels = pm.response.json();",
+              "pm.test('returns the overlapping Delhi catalog', function () {",
+              "  pm.expect(hotels).to.be.an('array').with.lengthOf(3);",
+              "  pm.expect(hotels.map((hotel) => hotel.name)).to.include('Holtin');",
+              "  pm.expect(hotels.map((hotel) => hotel.name)).to.include('Marriott');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hotels Delhi",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/hotels?city=delhi"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const hotels = pm.response.json();",
+              "pm.test('returns deduplicated hotels', function () {",
+              "  pm.expect(hotels).to.be.an('array').with.lengthOf(4);",
+              "  const names = hotels.map((hotel) => hotel.name);",
+              "  pm.expect(new Set(names).size).to.eql(names.length);",
+              "  const holtin = hotels.find((hotel) => hotel.name === 'Holtin');",
+              "  pm.expect(holtin).to.eql({",
+              "    name: 'Holtin',",
+              "    price: 5340,",
+              "    supplier: 'Supplier B',",
+              "    commissionPct: 20",
+              "  });",
+              "  pm.expect(hotels.find((hotel) => hotel.name === 'Radison').supplier).to.eql('Supplier A');",
+              "  pm.expect(hotels.find((hotel) => hotel.name === 'Marriott').supplier).to.eql('Supplier B');",
+              "  pm.expect(hotels.find((hotel) => hotel.name === 'Taj Palace').supplier).to.eql('Supplier A');",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hotels Delhi with minPrice",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/hotels?city=delhi&minPrice=7000"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const hotels = pm.response.json();",
+              "pm.test('returns hotels at or above minPrice', function () {",
+              "  pm.expect(hotels.map((hotel) => hotel.name)).to.eql(['Taj Palace', 'Marriott']);",
+              "  hotels.forEach((hotel) => pm.expect(hotel.price).to.be.at.least(7000));",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hotels Delhi with maxPrice",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/hotels?city=delhi&maxPrice=5400"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const hotels = pm.response.json();",
+              "pm.test('returns hotels at or below maxPrice', function () {",
+              "  pm.expect(hotels).to.eql([",
+              "    { name: 'Holtin', price: 5340, supplier: 'Supplier B', commissionPct: 20 }",
+              "  ]);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Hotels Delhi with minPrice and maxPrice",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/hotels?city=delhi&minPrice=5000&maxPrice=6000"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const hotels = pm.response.json();",
+              "pm.test('returns only the Redis price range', function () {",
+              "  pm.expect(hotels).to.be.an('array').with.lengthOf(2);",
+              "  pm.expect(hotels.map((hotel) => hotel.name)).to.eql(['Holtin', 'Radison']);",
+              "  hotels.forEach((hotel) => {",
+              "    pm.expect(hotel.price).to.be.at.least(5000);",
+              "    pm.expect(hotel.price).to.be.at.most(6000);",
+              "  });",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "City with no results",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/api/hotels?city=mumbai"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const hotels = pm.response.json();",
+              "pm.test('returns an empty hotel list', function () {",
+              "  pm.expect(hotels).to.eql([]);",
+              "});"
+            ]
+          }
+        }
+      ]
+    },
+    {
+      "name": "Health",
+      "request": {
+        "method": "GET",
+        "header": [],
+        "url": "{{baseUrl}}/health"
+      },
+      "event": [
+        {
+          "listen": "test",
+          "script": {
+            "type": "text/javascript",
+            "exec": [
+              "pm.test('status is 200 when every dependency is healthy', function () {",
+              "  pm.response.to.have.status(200);",
+              "});",
+              "const body = pm.response.json();",
+              "pm.test('reports application, Redis, and supplier health', function () {",
+              "  pm.expect(body).to.have.keys('status', 'redis', 'supplierA', 'supplierB');",
+              "  pm.expect(body.status).to.eql('healthy');",
+              "  pm.expect(body.redis).to.eql('healthy');",
+              "  pm.expect(body.supplierA).to.eql('healthy');",
+              "  pm.expect(body.supplierB).to.eql('healthy');",
+              "});"
+            ]
+          }
+        }
+      ]
+    }
+  ]
+}
